@@ -4,16 +4,23 @@ const fs = require('fs').promises;
 const path = require('path');
 
 const app = express();
-const port = 3001;
 
-app.use(cors());
+// CORS configuration
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'https://brusliste.vercel.app',
+  methods: ['GET', 'POST', 'DELETE'],
+  allowedHeaders: ['Content-Type'],
+}));
+
 app.use(express.json());
 
-const dataFile = path.join(__dirname, 'beverageData.json');
+// Use /tmp directory for file storage on Vercel
+const dataFile = path.join('/tmp', 'beverageData.json');
 
 // Helper function to read data from file
 async function readData() {
   try {
+    await fs.access(dataFile);
     const data = await fs.readFile(dataFile, 'utf8');
     return JSON.parse(data);
   } catch (error) {
@@ -62,6 +69,13 @@ app.delete('/api/people/:name', async (req, res) => {
   res.json(people);
 });
 
-app.listen(port, () => {
-  console.log(`Server running at https://brusliste-backend.vercel.app:${port}`);
-});
+// Vercel serverless function handler
+module.exports = app;
+
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  const port = process.env.PORT || 3001;
+  app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+  });
+}

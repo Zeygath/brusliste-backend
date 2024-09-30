@@ -1,4 +1,5 @@
 const express = require('express');
+const { Pool } = require('pg');
 
 const app = express();
 
@@ -15,8 +16,40 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-app.get('/api/people', (req, res) => {
-  res.json({ message: "Hello from the server!" });
+// Create a new pool using the connection string from Vercel
+const pool = new Pool({
+  connectionString: process.env.POSTGRES_URL,
+});
+
+// Initialize the database
+async function initializeDatabase() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS people (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        beverages INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    console.log('Database initialized successfully');
+  } catch (error) {
+    console.error('Error initializing database:', error);
+  } finally {
+    client.release();
+  }
+}
+
+initializeDatabase().catch(console.error);
+
+app.get('/api/people', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM people ORDER BY name');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching people:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 module.exports = app;

@@ -42,12 +42,42 @@ async function initializeDatabase() {
 
 initializeDatabase().catch(console.error);
 
+// GET endpoint to retrieve all people
 app.get('/api/people', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM people ORDER BY name');
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching people:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST endpoint to add or update a person
+app.post('/api/people', async (req, res) => {
+  const { name, beverages } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO people (name, beverages) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET beverages = $2 RETURNING *',
+      [name, beverages]
+    );
+    const updatedPeople = await pool.query('SELECT * FROM people ORDER BY name');
+    res.json(updatedPeople.rows);
+  } catch (error) {
+    console.error('Error adding/updating person:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE endpoint to remove a person
+app.delete('/api/people/:name', async (req, res) => {
+  const { name } = req.params;
+  try {
+    await pool.query('DELETE FROM people WHERE name = $1', [name]);
+    const updatedPeople = await pool.query('SELECT * FROM people ORDER BY name');
+    res.json(updatedPeople.rows);
+  } catch (error) {
+    console.error('Error removing person:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -77,6 +77,7 @@ app.delete('/api/people/:name', async (req, res) => {
   }  
 });
 
+app.options('*', cors());
 // Vercel serverless function handler
 module.exports = app;
 

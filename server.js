@@ -4,14 +4,22 @@ const { Pool } = require('pg');
 
 const app = express();
 
+const allowedOrigins = ['https://brusliste.vercel.app', 'http://localhost:3000'];
+
 // CORS configuration
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'https://brusliste.vercel.app',
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  optionsSuccessStatus: 204
-}));
+app.use((req, res, next) => {
+	const origin = req.headers.origin;
+	if (allowedOrigins.includes(origin)) {
+		res.setHeader('Access-Control-Allow-Origin', origin);
+	}
+	res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+	res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
+	res.setHeader('Access-Control-Allow-Credentials', true);
+	if (req.method === 'OPTIONS') {
+		return res.sendStatus(200);
+	}
+	next();
+});
 
 app.use(express.json());
 

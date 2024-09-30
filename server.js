@@ -1,95 +1,27 @@
 const express = require('express');
-const cors = require('cors');
-const { Pool } = require('pg');
 
 const app = express();
 
-const allowedOrigins = ['https://brusliste.vercel.app', 'http://localhost:3000'];
-
-// CORS configuration
 app.use((req, res, next) => {
-	const origin = req.headers.origin;
-	if (allowedOrigins.includes(origin)) {
-		res.setHeader('Access-Control-Allow-Origin', origin);
-	}
-	res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-	res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
-	res.setHeader('Access-Control-Allow-Credentials', true);
-	if (req.method === 'OPTIONS') {
-		return res.sendStatus(200);
-	}
-	next();
+  res.setHeader('Access-Control-Allow-Origin', 'https://brusliste.vercel.app');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
 });
 
 app.use(express.json());
 
-const pool = nw Pool({
-	connectionString: process.env.POSTGRES_URL,
+app.get('/api/people', (req, res) => {
+  res.json({ message: "Hello from the server!" });
 });
 
-// Helper function to write data to file
-async function initializeDatabase() {
-	const client = await pool.connect();
-	try {
-		await client.query(`
-		CREATE TABLE IF NOT EXISTS people (
-		id SERIAL PRIMARY KEY,
-		name TEXT UNIQUE NOT NULL,
-		beverages INTEGER NOT NULL DEFAULT 0
-		)
-		`);
-	} finally {
-		client.release();
-	}
-}
-
-initializeDatabase().catch(console.error);
-
-// GET endpoint to retrieve all people
-app.get('/api/people', async (req, res) => {
-	try {
-		const result = await pool.query('SELECT * FROM people ORDER BY name');
-		res.json(result.rows);
-	}	catch (error) {
-		console.error('Error fetching people:', error);
-		res.status(500).json({ error: 'Internal server error});
-	}
-});
-
-// POST endpoint to add or update a person
-app.post('/api/people', async (req, res) => {
-	const { name, beverages } = req.body;
-	try {
-		const result = await pool.query(
-		INSERT INTO people (name, beverages) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET beverages = $2 RETURNING *',
-		[name, beverages]
-		);
-		const updatedPeople = await pool.query('SELECT * FROM people ORDER BY name');
-		res.json(updatedPeople.rows);
-	}	catch (error) {
-		console.error('Error adding/updating person:', error);
-		res.status(500).json({ error: 'Internal server error' });
-	}
-});
-
-// DELETE endpoint to remove a person
-app.delete('/api/people/:name', async (req, res) => {
-  const { name } = req.params;
-  try {
-	  await pool.query('DELETE FROM people WHERE name = $1',[name]);
-	  const updatedPeople = await pool.query('SELECT * FROM people ORDER BY name');
-	  res.json(updatedPeople.rows);
-  }	catch (error) {
-	  console.error('Error removing person:', error);
-	  res.status(500).json({ error: 'Internal server error' });
-  }  
-});
-
-app.options('*', cors());
-// Vercel serverless function handler
 module.exports = app;
 
-// For local development
+// For local testing
 if (process.env.NODE_ENV !== 'production') {
   const port = process.env.PORT || 3001;
   app.listen(port, () => {

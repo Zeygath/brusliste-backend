@@ -71,7 +71,7 @@ app.post('/api/people', async (req, res) => {
     if (beverages > 0) {
       await client.query(
         'INSERT INTO transactions (person_id, beverages, amount, type) VALUES ($1, $2, $3, $4)',
-        [person.id, beverages, beverages * 2, 'purchase']
+        [person.id, beverages, beverages * 10, 'purchase']
       );
     }
     
@@ -99,7 +99,7 @@ app.post('/api/people/:id/pay', async (req, res) => {
     if (person && person.beverages > 0) {
       await client.query(
         'INSERT INTO transactions (person_id, beverages, amount, type) VALUES ($1, $2, $3, $4)',
-        [person.id, person.beverages, person.beverages * 2, 'payment']
+        [person.id, person.beverages, person.beverages * 10, 'payment']
       );
       await client.query('UPDATE people SET beverages = 0 WHERE id = $1', [id]);
     }

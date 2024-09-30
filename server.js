@@ -7,8 +7,10 @@ const app = express();
 // CORS configuration
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'https://brusliste.vercel.app',
-  methods: ['GET', 'POST', 'DELETE'],
-  allowedHeaders: ['Content-Type'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 204
 }));
 
 app.use(express.json());

@@ -132,6 +132,29 @@ app.get('/api/transactions', async (req, res) => {
   }
 });
 
+app.post('/api/quickbuy', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Insert a new transaction for the quick buy
+    const result = await client.query(
+      'INSERT INTO transactions (person_id, beverages, amount, type) VALUES (NULL, 1, 10, $1) RETURNING *',
+      ['quickbuy']
+    );
+
+    await client.query('COMMIT');
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error processing quick buy:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = app;
 
 if (process.env.NODE_ENV !== 'production') {

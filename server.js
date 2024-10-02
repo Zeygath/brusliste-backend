@@ -1,6 +1,6 @@
 const express = require('express');
 const { Pool } = require('pg');
-
+const crypto = require('crypto');
 const app = express();
 
 app.use((req, res, next) => {
@@ -19,6 +19,26 @@ app.use(express.json());
 const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,
 });
+//Middleware for API key auth
+const apiKeyAuth = async (req, res, next) => {
+  const apiKey = req.header('X-API-Key');
+  if (!apiKey) {
+    return res.status(401).json({ error: 'API key is missing'});
+  }
+
+  try {
+    const result = await pool.query('SELECT * FROM api_keys WHERE key = $1', [apiKey]);
+    if (result.rows.length === 0 ) {
+      return res.status(401).json( { error: 'Invalid API key'});
+    }
+    next();
+  } catch (error) {
+    console.error('Error verifying API key: ', error);
+    res.status(500).json({ error: 'Internal Server Error'});
+  }
+};
+
+app.use('/api', apiKeyAuth);
 
 async function initializeDatabase() {
   const client = await pool.connect();
@@ -53,6 +73,17 @@ app.get('/api/people', async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching people:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/generate-api-key', async (req, res) => {
+  const apiKey = crypto.randomBytes(32).toString('hex');
+  try {
+    await pool.query('INSERT INTO api_keys (key) VALUES ($1)', [apiKey]);
+    res.json({ apiKey });
+  } catch (error) {
+    console.error('Error generating API key:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

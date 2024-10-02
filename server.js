@@ -21,25 +21,11 @@ const pool = new Pool({
 });
 //Middleware for API key auth
 const apiKeyAuth = async (req, res, next) => {
-  const apiKey = req.header('X-API-Key');
-  if (!apiKey) {
-    return res.status(401).json({ error: 'API key is missing'});
-  }
+  console.log('API Key Auth Bypassed for Testing');
+  next();
+  };
 
-  try {
-    const result = await pool.query('SELECT * FROM api_keys WHERE key = $1', [apiKey]);
-    console.log(result)
-    if (result.rows.length === 0 ) {
-      return res.status(401).json( { error: 'Invalid API key'});
-    }
-    next();
-  } catch (error) {
-    console.error('Error verifying API key: ', error);
-    res.status(500).json({ error: 'Internal Server Error'});
-  }
-};
-
-//app.use('/api', apiKeyAuth);
+app.use('/api', apiKeyAuth);
 
 async function initializeDatabase() {
   const client = await pool.connect();

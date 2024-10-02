@@ -28,6 +28,7 @@ const apiKeyAuth = async (req, res, next) => {
 
   try {
     const result = await pool.query('SELECT * FROM api_keys WHERE key = $1', [apiKey]);
+    console.log(result)
     if (result.rows.length === 0 ) {
       return res.status(401).json( { error: 'Invalid API key'});
     }
@@ -38,7 +39,7 @@ const apiKeyAuth = async (req, res, next) => {
   }
 };
 
-app.use('/api', apiKeyAuth);
+//app.use('/api', apiKeyAuth);
 
 async function initializeDatabase() {
   const client = await pool.connect();

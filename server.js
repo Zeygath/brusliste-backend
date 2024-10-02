@@ -1,29 +1,46 @@
 const express = require('express');
 const { Pool } = require('pg');
 const crypto = require('crypto');
+const cors = require('cors');
 const app = express();
 
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', 'https://brusliste.vercel.app');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-app.use(express.json());
 
 const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,
 });
+
+// CORS configuration
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || 'https://brusliste.vercel.app',
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  credentials: true,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+
+app.use(express.json());
+
 //Middleware for API key auth
 const apiKeyAuth = async (req, res, next) => {
-  console.log('API Key Auth Bypassed for Testing');
-  next();
-  };
+  const apiKey = req.header('X-API-Key');
+  if (!apiKey) {
+    return res.status(401).json({ error: 'API key is missing' });
+  }
+
+  try {
+    const result = await pool.query('SELECT * FROM api_keys WHERE key = $1', [apiKey]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid API key' });
+    }
+    // You might want to check if the key is expired here
+    next();
+  } catch (error) {
+    console.error('Error verifying API key:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
 
 app.use('/api', apiKeyAuth);
 
@@ -172,6 +189,8 @@ app.post('/api/quickbuy', async (req, res) => {
     client.release();
   }
 });
+
+app.options('*', cors(corsOptions));
 
 module.exports = app;
 

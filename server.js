@@ -229,22 +229,22 @@ app.get('/api/statistics', async (req, res) => {
   try {
     // Current month leaderboard
     const currentMonthLeaderboard = await client.query(`
-      SELECT p.name, SUM(t.beverages) as total_beverages, SUM(t.amount) as total_amount
+      SELECT p.name, SUM(t.beverages) as total_beverages
       FROM transactions t
       JOIN people p ON t.person_id = p.id
       WHERE t.date >= DATE_TRUNC('month', CURRENT_DATE)
       GROUP BY p.name
-      ORDER BY total_amount DESC
+      ORDER BY total_beverages DESC
       LIMIT 5
     `);
 
     // All-time leaderboard
     const allTimeLeaderboard = await client.query(`
-      SELECT p.name, SUM(t.beverages) as total_beverages, SUM(t.amount) as total_amount
+      SELECT p.name, SUM(t.beverages) as total_beverages
       FROM transactions t
       JOIN people p ON t.person_id = p.id
       GROUP BY p.name
-      ORDER BY total_amount DESC
+      ORDER BY total_beverages DESC
       LIMIT 5
     `);
 

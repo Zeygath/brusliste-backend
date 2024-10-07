@@ -98,15 +98,15 @@ app.post('/api/people', async (req, res) => {
   try {
     await client.query('BEGIN');
     const personResult = await client.query(
-      'INSERT INTO people (name, beverages) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET beverages = people.beverages + $2 RETURNING *',
-      [name, beverages]
+      'INSERT INTO people (name, beverages, beverage_type) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET beverages = people.beverages + $2, beverage_type = $3 RETURNING *',
+      [name, beverages, beverageType]
     );
     const person = personResult.rows[0];
     
     if (beverages > 0) {
       await client.query(
-        'INSERT INTO transactions (person_id, beverages, amount, type) VALUES ($1, $2, $3, $4)',
-        [person.id, beverages, beverages * 10, 'purchase']
+        'INSERT INTO transactions (person_id, beverages, amount, type, beverage_type) VALUES ($1, $2, $3, $4, $5)',
+        [person.id, beverages, beverages * 10, 'purchase', beverageType]
       );
     }
     
@@ -133,8 +133,8 @@ app.post('/api/people/:id/pay', async (req, res) => {
     
     if (person && person.beverages > 0) {
       await client.query(
-        'INSERT INTO transactions (person_id, beverages, amount, type) VALUES ($1, $2, $3, $4)',
-        [person.id, person.beverages, person.beverages * 10, 'payment']
+        'INSERT INTO transactions (person_id, beverages, amount, type, beverage_type) VALUES ($1, $2, $3, $4, $5)',
+        [person.id, person.beverages, person.beverages * 10, 'payment', person.beverage_type]
       );
       await client.query('UPDATE people SET beverages = 0 WHERE id = $1', [id]);
     }
@@ -168,14 +168,15 @@ app.get('/api/transactions', async (req, res) => {
 });
 
 app.post('/api/quickbuy', async (req, res) => {
+  const { beverageType } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
     // Insert a new transaction for the quick buy
     const result = await client.query(
-      'INSERT INTO transactions (person_id, beverages, amount, type) VALUES (NULL, 1, 10, $1) RETURNING *',
-      ['quickbuy']
+      'INSERT INTO transactions (person_id, beverages, amount, type, beverage_type) VALUES (NULL, 1, 10, $1, $2) RETURNING *',
+      ['quickbuy', beverageType]
     );
 
     await client.query('COMMIT');
@@ -187,6 +188,23 @@ app.post('/api/quickbuy', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
+  }
+});
+
+app.post('/api/update-transaction-type', async (req, res) => {
+  const { transactionId, beverageType } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE transactions SET beverage_type = $1 WHERE id = $2 RETURNING *',
+      [beverageType, transactionId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating transaction type:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

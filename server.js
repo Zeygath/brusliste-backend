@@ -93,20 +93,36 @@ app.post('/generate-api-key', async (req, res) => {
 });
 
 app.post('/api/people', async (req, res) => {
-  const { name, beverages } = req.body;
+  const { name, beverages, beverageType } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const personResult = await client.query(
-      'INSERT INTO people (name, beverages, beverage_type) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET beverages = people.beverages + $2, beverage_type = $3 RETURNING *',
-      [name, beverages, beverageType]
-    );
-    const person = personResult.rows[0];
     
-    if (beverages > 0) {
+    // First, check if the person exists
+    const personCheck = await client.query('SELECT * FROM people WHERE name = $1', [name]);
+    
+    let person;
+    if (personCheck.rows.length === 0) {
+      // If person doesn't exist, insert a new record
+      const insertResult = await client.query(
+        'INSERT INTO people (name, beverages, beverage_type) VALUES ($1, $2, $3) RETURNING *',
+        [name, beverages, beverageType]
+      );
+      person = insertResult.rows[0];
+    } else {
+      // If person exists, update their record
+      const updateResult = await client.query(
+        'UPDATE people SET beverages = beverages + $1, beverage_type = $2 WHERE name = $3 RETURNING *',
+        [beverages, beverageType, name]
+      );
+      person = updateResult.rows[0];
+    }
+    
+    // Only insert a transaction if beverages were added or removed
+    if (beverages !== 0) {
       await client.query(
         'INSERT INTO transactions (person_id, beverages, amount, type, beverage_type) VALUES ($1, $2, $3, $4, $5)',
-        [person.id, beverages, beverages * 10, 'purchase', beverageType]
+        [person.id, beverages, Math.abs(beverages) * 10, beverages > 0 ? 'purchase' : 'return', beverageType]
       );
     }
     
@@ -116,8 +132,8 @@ app.post('/api/people', async (req, res) => {
     res.json(updatedPeople.rows);
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error adding/updating person:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error updating beverages:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   } finally {
     client.release();
   }

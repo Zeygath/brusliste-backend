@@ -224,6 +224,52 @@ app.post('/api/update-transaction-type', async (req, res) => {
   }
 });
 
+app.get('/api/statistics', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    // Current month leaderboard
+    const currentMonthLeaderboard = await client.query(`
+      SELECT p.name, SUM(t.beverages) as total_beverages, SUM(t.amount) as total_amount
+      FROM transactions t
+      JOIN people p ON t.person_id = p.id
+      WHERE t.date >= DATE_TRUNC('month', CURRENT_DATE)
+      GROUP BY p.name
+      ORDER BY total_amount DESC
+      LIMIT 5
+    `);
+
+    // All-time leaderboard
+    const allTimeLeaderboard = await client.query(`
+      SELECT p.name, SUM(t.beverages) as total_beverages, SUM(t.amount) as total_amount
+      FROM transactions t
+      JOIN people p ON t.person_id = p.id
+      GROUP BY p.name
+      ORDER BY total_amount DESC
+      LIMIT 5
+    `);
+
+    // Beverage type distribution
+    const beverageTypeDistribution = await client.query(`
+      SELECT beverage_type, COUNT(*) as count, 
+             COUNT(*) * 100.0 / (SELECT COUNT(*) FROM transactions) as percentage
+      FROM transactions
+      GROUP BY beverage_type
+      ORDER BY count DESC
+    `);
+
+    res.json({
+      currentMonthLeaderboard: currentMonthLeaderboard.rows,
+      allTimeLeaderboard: allTimeLeaderboard.rows,
+      beverageTypeDistribution: beverageTypeDistribution.rows
+    });
+  } catch (error) {
+    console.error('Error fetching statistics:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.options('*', cors(corsOptions));
 
 module.exports = app;

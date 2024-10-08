@@ -230,9 +230,10 @@ app.get('/api/statistics', async (req, res) => {
     // Current month leaderboard
     const currentMonthLeaderboard = await client.query(`
       SELECT p.name, SUM(t.beverages) as total_beverages
-      FROM transactions t WHERE type IS 'purchase'
+      FROM transactions t
       JOIN people p ON t.person_id = p.id
       WHERE t.date >= DATE_TRUNC('month', CURRENT_DATE)
+        AND t.type = 'purchase'
       GROUP BY p.name
       ORDER BY total_beverages DESC
       LIMIT 5
@@ -241,8 +242,9 @@ app.get('/api/statistics', async (req, res) => {
     // All-time leaderboard
     const allTimeLeaderboard = await client.query(`
       SELECT p.name, SUM(t.beverages) as total_beverages
-      FROM transactions t WHERE type IS 'purchase'
+      FROM transactions t WHERE type = 'purchase'
       JOIN people p ON t.person_id = p.id
+      WHERE t.type = 'purchase'
       GROUP BY p.name
       ORDER BY total_beverages DESC
       LIMIT 5

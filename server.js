@@ -233,7 +233,7 @@ app.get('/api/statistics', async (req, res) => {
       FROM transactions t
       JOIN people p ON t.person_id = p.id
       WHERE t.date >= DATE_TRUNC('month', CURRENT_DATE)
-        AND t.type = 'purchase'
+        AND t.type = 'purchase'  -- Only count purchase transactions
       GROUP BY p.name
       ORDER BY total_beverages DESC
       LIMIT 5
@@ -242,9 +242,9 @@ app.get('/api/statistics', async (req, res) => {
     // All-time leaderboard
     const allTimeLeaderboard = await client.query(`
       SELECT p.name, SUM(t.beverages) as total_beverages
-      FROM transactions t WHERE type = 'purchase'
+      FROM transactions t
       JOIN people p ON t.person_id = p.id
-      WHERE t.type = 'purchase'
+      WHERE t.type = 'purchase'  -- Only count purchase transactions
       GROUP BY p.name
       ORDER BY total_beverages DESC
       LIMIT 5
@@ -253,12 +253,12 @@ app.get('/api/statistics', async (req, res) => {
     // Beverage type distribution
     const beverageTypeDistribution = await client.query(`
       SELECT beverage_type, COUNT(*) as count, 
-             COUNT(*) * 100.0 / (SELECT COUNT(*) FROM transactions) as percentage
+             COUNT(*) * 100.0 / (SELECT COUNT(*) FROM transactions WHERE type = 'purchase') as percentage
       FROM transactions
+      WHERE type = 'purchase'
       GROUP BY beverage_type
       ORDER BY count DESC
     `);
-
     res.json({
       currentMonthLeaderboard: currentMonthLeaderboard.rows,
       allTimeLeaderboard: allTimeLeaderboard.rows,

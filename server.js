@@ -1,13 +1,11 @@
 const express = require('express');
-const { Pool } = require('pg');
+const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const cors = require('cors');
 const app = express();
 
-
-const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL,
-});
+// Initialize Supabase client
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 // CORS configuration
 const corsOptions = {
@@ -19,10 +17,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
 app.use(express.json());
 
-//Middleware for API key auth
+// Middleware for API key auth
 const apiKeyAuth = async (req, res, next) => {
   const apiKey = req.header('X-API-Key');
   if (!apiKey) {
@@ -30,8 +27,13 @@ const apiKeyAuth = async (req, res, next) => {
   }
 
   try {
-    const result = await pool.query('SELECT * FROM api_keys WHERE key = $1', [apiKey]);
-    if (result.rows.length === 0) {
+    const { data, error } = await supabase
+      .from('api_keys')
+      .select('*')
+      .eq('key', apiKey)
+      .single();
+
+    if (error || !data) {
       return res.status(401).json({ error: 'Invalid API key' });
     }
     // You might want to check if the key is expired here
@@ -44,235 +46,272 @@ const apiKeyAuth = async (req, res, next) => {
 
 app.use('/api', apiKeyAuth);
 
-async function initializeDatabase() {
-  const client = await pool.connect();
-  try {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS people (
-        id SERIAL PRIMARY KEY,
-        name TEXT UNIQUE NOT NULL,
-        beverages INTEGER NOT NULL DEFAULT 0
-      )
-    `);
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS transactions (
-        id SERIAL PRIMARY KEY,
-        person_id INTEGER REFERENCES people(id),
-        date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        beverages INTEGER NOT NULL,
-        amount NUMERIC(10, 2) NOT NULL,
-        type TEXT NOT NULL
-      )
-    `);
-  } finally {
-    client.release();
-  }
-}
-
-initializeDatabase().catch(console.error);
-
+// Get all people
 app.get('/api/people', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM people ORDER BY name');
-    res.json(result.rows);
+    const { data, error } = await supabase
+      .from('people')
+      .select('*')
+      .order('name');
+
+    if (error) throw error;
+    res.json(data);
   } catch (error) {
     console.error('Error fetching people:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-app.post('/generate-api-key', async (req, res) => {
-  const apiKey = crypto.randomBytes(32).toString('hex');
-  try {
-    await pool.query('INSERT INTO api_keys (key) VALUES ($1)', [apiKey]);
-    res.json({ apiKey });
-  } catch (error) {
-    console.error('Error generating API key:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
+// Add or update a person
 app.post('/api/people', async (req, res) => {
   const { name, beverages, beverageType } = req.body;
-  const client = await pool.connect();
+  const client = supabase;
   try {
-    await client.query('BEGIN');
+    await client.rpc('begin');
     
-    // First, check if the person exists
-    const personCheck = await client.query('SELECT * FROM people WHERE name = $1', [name]);
-    
+    const { data: existingPerson, error: selectError } = await client
+      .from('people')
+      .select('*')
+      .eq('name', name)
+      .single();
+
+    if (selectError && selectError.code !== 'PGRST116') throw selectError;
+
     let person;
-    if (personCheck.rows.length === 0) {
-      // If person doesn't exist, insert a new record
-      const insertResult = await client.query(
-        'INSERT INTO people (name, beverages, beverage_type) VALUES ($1, $2, $3) RETURNING *',
-        [name, beverages, beverageType]
-      );
-      person = insertResult.rows[0];
+    if (existingPerson) {
+      const { data, error } = await client
+        .from('people')
+        .update({ beverages: existingPerson.beverages + beverages, beverage_type: beverageType })
+        .eq('id', existingPerson.id)
+        .select();
+      if (error) throw error;
+      person = data[0];
     } else {
-      // If person exists, update their record
-      const updateResult = await client.query(
-        'UPDATE people SET beverages = beverages + $1, beverage_type = $2 WHERE name = $3 RETURNING *',
-        [beverages, beverageType, name]
-      );
-      person = updateResult.rows[0];
+      const { data, error } = await client
+        .from('people')
+        .insert({ name, beverages, beverage_type: beverageType })
+        .select();
+      if (error) throw error;
+      person = data[0];
     }
-    
-    // Only insert a transaction if beverages were added or removed
+
     if (beverages !== 0) {
-      await client.query(
-        'INSERT INTO transactions (person_id, beverages, amount, type, beverage_type) VALUES ($1, $2, $3, $4, $5)',
-        [person.id, beverages, Math.abs(beverages) * 10, beverages > 0 ? 'purchase' : 'return', beverageType]
-      );
+      const { error: transactionError } = await client
+        .from('transactions')
+        .insert({
+          person_id: person.id,
+          beverages,
+          amount: Math.abs(beverages) * 10,
+          type: beverages > 0 ? 'purchase' : 'return',
+          beverage_type: beverageType
+        });
+      if (transactionError) throw transactionError;
     }
+
+    await client.rpc('commit');
     
-    await client.query('COMMIT');
-    
-    const updatedPeople = await client.query('SELECT * FROM people ORDER BY name');
-    res.json(updatedPeople.rows);
+    const { data: updatedPeople, error: peopleError } = await supabase
+      .from('people')
+      .select('*')
+      .order('name');
+    if (peopleError) throw peopleError;
+
+    res.json(updatedPeople);
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.rpc('rollback');
     console.error('Error updating beverages:', error);
     res.status(500).json({ error: 'Internal server error', details: error.message });
-  } finally {
-    client.release();
   }
 });
 
+// Process payment for a person
 app.post('/api/people/:id/pay', async (req, res) => {
   const { id } = req.params;
-  const client = await pool.connect();
+  const client = supabase;
   try {
-    await client.query('BEGIN');
-    const personResult = await client.query('SELECT * FROM people WHERE id = $1', [id]);
-    const person = personResult.rows[0];
+    await client.rpc('begin');
+    
+    const { data: person, error: personError } = await client
+      .from('people')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (personError) throw personError;
     
     if (person && person.beverages > 0) {
-      await client.query(
-        'INSERT INTO transactions (person_id, beverages, amount, type, beverage_type) VALUES ($1, $2, $3, $4, $5)',
-        [person.id, person.beverages, person.beverages * 10, 'payment', person.beverage_type]
-      );
-      await client.query('UPDATE people SET beverages = 0 WHERE id = $1', [id]);
+      const { error: transactionError } = await client
+        .from('transactions')
+        .insert({
+          person_id: person.id,
+          beverages: person.beverages,
+          amount: person.beverages * 10,
+          type: 'payment',
+          beverage_type: person.beverage_type
+        });
+      if (transactionError) throw transactionError;
+
+      const { error: updateError } = await client
+        .from('people')
+        .update({ beverages: 0 })
+        .eq('id', id);
+      if (updateError) throw updateError;
     }
     
-    await client.query('COMMIT');
+    await client.rpc('commit');
     
-    const updatedPeople = await client.query('SELECT * FROM people ORDER BY name');
-    res.json(updatedPeople.rows);
+    const { data: updatedPeople, error: peopleError } = await supabase
+      .from('people')
+      .select('*')
+      .order('name');
+    if (peopleError) throw peopleError;
+
+    res.json(updatedPeople);
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.rpc('rollback');
     console.error('Error processing payment:', error);
     res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
   }
 });
 
+// Get all transactions
 app.get('/api/transactions', async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT t.*, p.name 
-      FROM transactions t 
-      JOIN people p ON t.person_id = p.id 
-      ORDER BY t.date DESC
-    `);
-    res.json(result.rows);
+    const { data, error } = await supabase
+      .from('transactions')
+      .select(`
+        *,
+        people (name)
+      `)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    res.json(data);
   } catch (error) {
     console.error('Error fetching transactions:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
+// Process a quick buy
 app.post('/api/quickbuy', async (req, res) => {
   const { beverageType } = req.body;
-  const client = await pool.connect();
+  const client = supabase;
   try {
-    await client.query('BEGIN');
-
-    // Insert a new transaction for the quick buy
-    const result = await client.query(
-      'INSERT INTO transactions (person_id, beverages, amount, type, beverage_type) VALUES (NULL, 1, 10, $1, $2) RETURNING *',
-      ['quickbuy', beverageType]
-    );
-
-    await client.query('COMMIT');
+    await client.rpc('begin');
     
-    res.json(result.rows[0]);
+    const { data, error } = await client
+      .from('transactions')
+      .insert({
+        person_id: null,
+        beverages: 1,
+        amount: 10,
+        type: 'quickbuy',
+        beverage_type: beverageType
+      })
+      .select();
+
+    if (error) throw error;
+    
+    await client.rpc('commit');
+    
+    res.json(data[0]);
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.rpc('rollback');
     console.error('Error processing quick buy:', error);
     res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
   }
 });
 
+// Update transaction type
 app.post('/api/update-transaction-type', async (req, res) => {
   const { transactionId, beverageType } = req.body;
   try {
-    const result = await pool.query(
-      'UPDATE transactions SET beverage_type = $1 WHERE id = $2 RETURNING *',
-      [beverageType, transactionId]
-    );
-    if (result.rows.length === 0) {
+    const { data, error } = await supabase
+      .from('transactions')
+      .update({ beverage_type: beverageType })
+      .eq('id', transactionId)
+      .select();
+
+    if (error) throw error;
+    if (data.length === 0) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
-    res.json(result.rows[0]);
+    res.json(data[0]);
   } catch (error) {
     console.error('Error updating transaction type:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
+// Get statistics
 app.get('/api/statistics', async (req, res) => {
-  const client = await pool.connect();
   try {
-    // Current month leaderboard
-    const currentMonthLeaderboard = await client.query(`
-      SELECT p.name, SUM(t.beverages) as total_beverages
-      FROM transactions t
-      JOIN people p ON t.person_id = p.id
-      WHERE t.date >= DATE_TRUNC('month', CURRENT_DATE)
-        AND t.type = 'purchase'  -- Only count purchase transactions
-      GROUP BY p.name
-      ORDER BY total_beverages DESC
-      LIMIT 5
-    `);
+    const currentMonthStart = new Date();
+    currentMonthStart.setDate(1);
+    currentMonthStart.setHours(0, 0, 0, 0);
 
-    // All-time leaderboard
-    const allTimeLeaderboard = await client.query(`
-      SELECT p.name, SUM(t.beverages) as total_beverages
-      FROM transactions t
-      JOIN people p ON t.person_id = p.id
-      WHERE t.type = 'purchase'  -- Only count purchase transactions
-      GROUP BY p.name
-      ORDER BY total_beverages DESC
-      LIMIT 5
-    `);
+    const [currentMonthLeaderboard, allTimeLeaderboard, beverageTypeDistribution] = await Promise.all([
+      // Current month leaderboard
+      supabase
+        .from('transactions')
+        .select('people(name), beverages')
+        .gte('date', currentMonthStart.toISOString())
+        .eq('type', 'purchase')
+        .order('beverages', { ascending: false })
+        .limit(5),
 
-    // Beverage type distribution
-    const beverageTypeDistribution = await client.query(`
-      SELECT beverage_type, COUNT(*) as count, 
-             COUNT(*) * 100.0 / (SELECT COUNT(*) FROM transactions WHERE type = 'purchase') as percentage
-      FROM transactions
-      WHERE type = 'purchase'
-      GROUP BY beverage_type
-      ORDER BY count DESC
-    `);
+      // All-time leaderboard
+      supabase
+        .from('transactions')
+        .select('people(name), beverages')
+        .eq('type', 'purchase')
+        .order('beverages', { ascending: false })
+        .limit(5),
+
+      // Beverage type distribution
+      supabase
+        .from('transactions')
+        .select('beverage_type, count')
+        .eq('type', 'purchase')
+        .group('beverage_type')
+    ]);
+
+    if (currentMonthLeaderboard.error) throw currentMonthLeaderboard.error;
+    if (allTimeLeaderboard.error) throw allTimeLeaderboard.error;
+    if (beverageTypeDistribution.error) throw beverageTypeDistribution.error;
+
+    const totalPurchases = beverageTypeDistribution.data.reduce((sum, item) => sum + item.count, 0);
+    const distributionWithPercentage = beverageTypeDistribution.data.map(item => ({
+      ...item,
+      percentage: (item.count / totalPurchases) * 100
+    }));
+
     res.json({
-      currentMonthLeaderboard: currentMonthLeaderboard.rows,
-      allTimeLeaderboard: allTimeLeaderboard.rows,
-      beverageTypeDistribution: beverageTypeDistribution.rows
+      currentMonthLeaderboard: currentMonthLeaderboard.data,
+      allTimeLeaderboard: allTimeLeaderboard.data,
+      beverageTypeDistribution: distributionWithPercentage
     });
   } catch (error) {
     console.error('Error fetching statistics:', error);
     res.status(500).json({ error: 'Internal server error', details: error.message });
-  } finally {
-    client.release();
   }
 });
 
-app.options('*', cors(corsOptions));
+// Generate API key
+app.post('/generate-api-key', async (req, res) => {
+  const apiKey = crypto.randomBytes(32).toString('hex');
+  try {
+    const { error } = await supabase
+      .from('api_keys')
+      .insert({ key: apiKey });
+    if (error) throw error;
+    res.json({ apiKey });
+  } catch (error) {
+    console.error('Error generating API key:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 module.exports = app;
 

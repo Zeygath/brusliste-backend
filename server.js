@@ -193,6 +193,110 @@ app.get('/api/transactions', async (req, res) => {
   }
 });
 
+//Toggle coffee mode
+app.get('/api/coffee-mode', async (req, res) => {
+  try{
+    const { data, error } = await supabase
+      .from('coffee_tracker')
+      .select('*')
+      .order('user_id')
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching coffee data:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/coffee-tracker', async (req, res) => {
+  const { userId, cupsConsumed, coffeePurchased } = req.body;
+  try {
+    const { data: existingRecord, error: fetchError } = await supabase
+      .from('coffee_tracker')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+
+    let result;
+    if (existingRecord) {
+      const { data, error } = await supabase
+        .from('coffee_tracker')
+        .update({ 
+          cups_consumed: existingRecord.cups_consumed + cupsConsumed,
+          coffee_purchased: existingRecord.coffee_purchased + coffeePurchased,
+          updated_at: new Date()
+        })
+        .eq('user_id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      result = data;
+    } else {
+      const { data, error } = await supabase
+        .from('coffee_tracker')
+        .insert({ 
+          user_id: userId, 
+          cups_consumed: cupsConsumed, 
+          coffee_purchased: coffeePurchased 
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      result = data;
+    }
+
+    if (cupsConsumed > 0) {
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          person_id: userId,
+          beverages: cupsConsumed,
+          amount: cupsConsumed,
+          type: 'purchase',
+          beverage_type: 'Coffee'
+        });
+      
+      if (transactionError) throw transactionError;
+    }
+
+    if (coffeePurchased > 0) {
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          person_id: userId,
+          beverages: 0,
+          amount: -coffeePurchased,
+          type: 'coffee_purchase',
+          beverage_type: 'Ground Coffee'
+        });
+      
+      if (transactionError) throw transactionError;
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error updating coffee tracker:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/coffee-balance', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .rpc('get_coffee_balance');
+    
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching coffee balance:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Process a quick buy
 app.post('/api/quickbuy', async (req, res) => {
   const { beverageType } = req.body;

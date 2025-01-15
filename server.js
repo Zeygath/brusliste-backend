@@ -194,12 +194,14 @@ app.get('/api/transactions', async (req, res) => {
 });
 
 //Toggle coffee mode
+
 app.get('/api/coffee-mode', async (req, res) => {
-  try{
+  try {
     const { data, error } = await supabase
       .from('coffee_tracker')
       .select('*')
-      .order('user_id')
+      .order('user_id');
+    
     if (error) throw error;
     res.json(data);
   } catch (error) {
@@ -286,14 +288,23 @@ app.post('/api/coffee-tracker', async (req, res) => {
 
 app.get('/api/coffee-balance', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .rpc('get_coffee_balance');
+    console.log('Fetching coffee balance...');
+    const { data, error } = await supabase.rpc('get_coffee_balance');
     
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
+    
+    console.log('Coffee balance data:', data);
     res.json(data);
   } catch (error) {
     console.error('Error fetching coffee balance:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      error: 'Intern serverfeil', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 

@@ -292,14 +292,14 @@ app.get('/api/coffee-balance', async (req, res) => {
     const { data, error } = await supabase.rpc('get_coffee_balance');
     
     if (error) {
-      console.error('Supabase error:', error);
+      console.error('Supabase error:', JSON.stringify(error, null, 2));
       throw error;
     }
     
-    console.log('Coffee balance data:', data);
+    console.log('Coffee balance data:', JSON.stringify(data, null, 2));
     res.json(data);
   } catch (error) {
-    console.error('Error fetching coffee balance:', error);
+    console.error('Error fetching coffee balance:', JSON.stringify(error, null, 2));
     res.status(500).json({ 
       error: 'Intern serverfeil', 
       details: error.message,

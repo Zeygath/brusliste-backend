@@ -105,7 +105,6 @@ app.post('/api/people', async (req, res) => {
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
-          id: generateUniqueId(),
           person_id: person.id,
           beverages,
           amount: Math.abs(beverages) * 10,
@@ -144,7 +143,6 @@ app.post('/api/people/:id/pay', async (req, res) => {
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
-          id: generateUniqueId(),
           person_id: person.id,
           beverages: person.beverages,
           amount: person.beverages * 10,
@@ -199,7 +197,6 @@ app.post('/api/quickbuy', async (req, res) => {
     const { data, error } = await supabase
       .from('transactions')
       .insert({
-        id: generateUniqueId(),
         person_id: null,
         beverages: 1,
         amount: 10,
@@ -279,7 +276,6 @@ app.post('/api/coffee-tracker', async (req, res) => {
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
-          id: generateUniqueId(),
           person_id: userId,
           beverages: cupsConsumed,
           amount: cupsConsumed,
@@ -294,7 +290,6 @@ app.post('/api/coffee-tracker', async (req, res) => {
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
-          id: generateUniqueId(),
           person_id: userId,
           beverages: 0,
           amount: -coffeePurchased,

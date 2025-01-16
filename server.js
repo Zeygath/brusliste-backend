@@ -101,7 +101,6 @@ app.post('/api/people', async (req, res) => {
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
-          id: generateUniqueId(),
           person_id: person.id,
           beverages,
           amount: Math.abs(beverages) * 10,

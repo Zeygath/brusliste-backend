@@ -1,24 +1,50 @@
 const express = require('express');
-const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
-require('dotenv').config();
-
+const cors = require('cors');
 const app = express();
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-  next();
-});
-app.use(express.json());
-app.use(cors());
 
+// Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-function generateUniqueId() {
-  return crypto.randomBytes(16).toString('hex');
-}
+// CORS configuration
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || 'https://brusliste.vercel.app',
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  credentials: true,
+  optionsSuccessStatus: 204
+};
 
-// Existing endpoints
+app.use(cors(corsOptions));
+app.use(express.json());
+
+// Middleware for API key auth
+const apiKeyAuth = async (req, res, next) => {
+  const apiKey = req.header('X-API-Key');
+  if (!apiKey) {
+    return res.status(401).json({ error: 'API key is missing' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('api_keys')
+      .select('*')
+      .eq('key', apiKey)
+      .single();
+
+    if (error || !data) {
+      return res.status(401).json({ error: 'Invalid API key' });
+    }
+    // You might want to check if the key is expired here
+    next();
+  } catch (error) {
+    console.error('Error verifying API key:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+app.use('/api', apiKeyAuth);
 
 app.get('/api/people', async (req, res) => {
   try {
@@ -306,3 +332,9 @@ app.get('/api/coffee-balance', async (req, res) => {
 
 module.exports = app;
 
+if (process.env.NODE_ENV !== 'production') {
+  const port = process.env.PORT || 3001;
+  app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+  });
+}

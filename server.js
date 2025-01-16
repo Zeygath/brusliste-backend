@@ -19,6 +19,10 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+function generateUniqueId() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
 // Middleware for API key auth
 const apiKeyAuth = async (req, res, next) => {
   const apiKey = req.header('X-API-Key');
@@ -101,6 +105,7 @@ app.post('/api/people', async (req, res) => {
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
+          id: generateUniqueId(),
           person_id: person.id,
           beverages,
           amount: Math.abs(beverages) * 10,

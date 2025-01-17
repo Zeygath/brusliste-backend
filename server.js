@@ -113,6 +113,24 @@ app.post('/api/people', async (req, res) => {
         });
       
       if (transactionError) throw transactionError;
+
+      // Update inventory
+      const { data: inventoryData, error: inventoryError } = await supabase
+        .from('inventory')
+        .select('quantity')
+        .eq('beverage_type', beverageType)
+        .single();
+
+      if (inventoryError && inventoryError.code !== 'PGRST116') throw inventoryError;
+
+      const currentQuantity = inventoryData ? inventoryData.quantity : 0;
+      const newQuantity = currentQuantity - beverages;
+
+      const { error: updateInventoryError } = await supabase
+        .from('inventory')
+        .upsert({ beverage_type: beverageType, quantity: newQuantity }, { onConflict: 'beverage_type' });
+
+      if (updateInventoryError) throw updateInventoryError;
     }
 
     const { data: updatedPeople, error: peopleError } = await supabase
@@ -194,7 +212,7 @@ app.get('/api/transactions', async (req, res) => {
 app.post('/api/quickbuy', async (req, res) => {
   const { beverageType } = req.body;
   try {
-    const { data, error } = await supabase
+    const { data: transaction, error: transactionError } = await supabase
       .from('transactions')
       .insert({
         person_id: null,
@@ -206,10 +224,61 @@ app.post('/api/quickbuy', async (req, res) => {
       .select()
       .single();
     
+    if (transactionError) throw transactionError;
+
+    // Update inventory
+    const { data: inventoryData, error: inventoryError } = await supabase
+      .from('inventory')
+      .select('quantity')
+      .eq('beverage_type', beverageType)
+      .single();
+
+    if (inventoryError && inventoryError.code !== 'PGRST116') throw inventoryError;
+
+    const currentQuantity = inventoryData ? inventoryData.quantity : 0;
+    const newQuantity = currentQuantity - 1;
+
+    const { error: updateInventoryError } = await supabase
+      .from('inventory')
+      .upsert({ beverage_type: beverageType, quantity: newQuantity }, { onConflict: 'beverage_type' });
+
+    if (updateInventoryError) throw updateInventoryError;
+
+    res.json(transaction);
+  } catch (error) {
+    console.error('Error processing quick buy:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+// Endpoints for inventory
+app.get('/api/inventory', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('inventory')
+      .select('*');
+    
     if (error) throw error;
     res.json(data);
   } catch (error) {
-    console.error('Error processing quick buy:', error);
+    console.error('Error fetching inventory:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/inventory/update', async (req, res) => {
+  const { beverageType, quantity } = req.body;
+  try {
+    const { data, error } = await supabase
+      .from('inventory')
+      .upsert({ beverage_type: beverageType, quantity }, { onConflict: 'beverage_type' })
+      .select();
+    
+    if (error) throw error;
+    res.json(data[0]);
+  } catch (error) {
+    console.error('Error updating inventory:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -422,6 +422,68 @@ app.get('/api/coffee-balance', async (req, res) => {
   }
 });
 
+
+app.get('/api/statistics', async (req, res) => {
+  try {
+    // Current month leaderboard
+    const { data: currentMonthLeaderboard, error: currentMonthError } = await supabase
+      .from('transactions')
+      .select('people(name), beverages')
+      .eq('type', 'purchase')
+      .gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+      .order('beverages', { ascending: false })
+      .limit(5);
+
+    if (currentMonthError) throw currentMonthError;
+
+    // All-time leaderboard
+    const { data: allTimeLeaderboard, error: allTimeError } = await supabase
+      .from('transactions')
+      .select('people(name), beverages')
+      .eq('type', 'purchase')
+      .order('beverages', { ascending: false })
+      .limit(5);
+
+    if (allTimeError) throw allTimeError;
+
+    // Beverage type distribution
+    const { data: beverageTypeDistribution, error: distributionError } = await supabase
+      .from('transactions')
+      .select('beverage_type, count')
+      .order('count', { ascending: false });
+
+    if (distributionError) throw distributionError;
+
+    // Calculate total transactions for percentage
+    const { count: totalTransactions, error: countError } = await supabase
+      .from('transactions')
+      .select('*', { count: 'exact', head: true });
+
+    if (countError) throw countError;
+
+    // Calculate percentages
+    const distributionWithPercentage = beverageTypeDistribution.map(item => ({
+      ...item,
+      percentage: (item.count * 100.0 / totalTransactions).toFixed(2)
+    }));
+
+    res.json({
+      currentMonthLeaderboard: currentMonthLeaderboard.map(item => ({
+        name: item.people.name,
+        total_beverages: item.beverages
+      })),
+      allTimeLeaderboard: allTimeLeaderboard.map(item => ({
+        name: item.people.name,
+        total_beverages: item.beverages
+      })),
+      beverageTypeDistribution: distributionWithPercentage
+    });
+  } catch (error) {
+    console.error('Error fetching statistics:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
 module.exports = app;
 
 if (process.env.NODE_ENV !== 'production') {

@@ -426,12 +426,14 @@ app.get('/api/coffee-balance', async (req, res) => {
 app.get('/api/statistics', async (req, res) => {
   try {
     // Current month leaderboard
+    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
     const { data: currentMonthLeaderboard, error: currentMonthError } = await supabase
       .from('transactions')
-      .select('people(name), beverages')
+      .select('person_id, people(name), sum(beverages)')
       .eq('type', 'purchase')
-      .gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
-      .order('beverages', { ascending: false })
+      .gte('date', `${currentMonth}-01`)
+      .group('person_id, people(name)')
+      .order('sum', { ascending: false })
       .limit(5);
 
     if (currentMonthError) throw currentMonthError;
@@ -439,9 +441,10 @@ app.get('/api/statistics', async (req, res) => {
     // All-time leaderboard
     const { data: allTimeLeaderboard, error: allTimeError } = await supabase
       .from('transactions')
-      .select('people(name), beverages')
+      .select('person_id, people(name), sum(beverages)')
       .eq('type', 'purchase')
-      .order('beverages', { ascending: false })
+      .group('person_id, people(name)')
+      .order('sum', { ascending: false })
       .limit(5);
 
     if (allTimeError) throw allTimeError;
@@ -449,7 +452,8 @@ app.get('/api/statistics', async (req, res) => {
     // Beverage type distribution
     const { data: beverageTypeDistribution, error: distributionError } = await supabase
       .from('transactions')
-      .select('beverage_type, count')
+      .select('beverage_type, count(*)')
+      .group('beverage_type')
       .order('count', { ascending: false });
 
     if (distributionError) throw distributionError;
@@ -463,18 +467,19 @@ app.get('/api/statistics', async (req, res) => {
 
     // Calculate percentages
     const distributionWithPercentage = beverageTypeDistribution.map(item => ({
-      ...item,
-      percentage: (item.count * 100.0 / totalTransactions).toFixed(2)
+      beverage_type: item.beverage_type,
+      count: item.count,
+      percentage: ((item.count * 100.0) / totalTransactions).toFixed(2)
     }));
 
     res.json({
       currentMonthLeaderboard: currentMonthLeaderboard.map(item => ({
         name: item.people.name,
-        total_beverages: item.beverages
+        total_beverages: item.sum
       })),
       allTimeLeaderboard: allTimeLeaderboard.map(item => ({
         name: item.people.name,
-        total_beverages: item.beverages
+        total_beverages: item.sum
       })),
       beverageTypeDistribution: distributionWithPercentage
     });

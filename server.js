@@ -191,6 +191,30 @@ app.post('/api/people/:id/pay', async (req, res) => {
   }
 });
 
+app.delete('/api/people/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { error } = await supabase
+      .from('people')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+
+    const { data: updatedPeople, error: peopleError } = await supabase
+      .from('people')
+      .select('*')
+      .order('name');
+    
+    if (peopleError) throw peopleError;
+    res.json(updatedPeople);
+  } catch (error) {
+    console.error('Error deleting person:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 app.get('/api/transactions', async (req, res) => {
   try {
     const { data, error } = await supabase

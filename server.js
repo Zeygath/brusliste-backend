@@ -11,7 +11,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const corsOptions = {
   origin: process.env.CORS_ORIGIN || 'https://brusliste.vercel.app',
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Location-Id'],
   credentials: true,
   optionsSuccessStatus: 204
 };

@@ -1,28 +1,23 @@
-const express = require("express")
-const { createClient } = require("@supabase/supabase-js")
-const cors = require("cors")
-require("dotenv").config()
+const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
+const cors = require('cors');
+const app = express();
 
-const app = express()
-const port = process.env.PORT || 3001
+// Initialize Supabase client
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY)
+// CORS configuration
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || 'https://brusliste.vercel.app',
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  credentials: true,
+  optionsSuccessStatus: 204
+};
 
-// Update CORS configuration to allow requests from your frontend domain
-app.use(
-  cors({
-    origin: [
-      "https://brusliste.vercel.app",
-      "https://brusliste-git-test-your-username.vercel.app",
-      "http://localhost:3000",
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "X-API-Key", "X-Location-Id"],
-    credentials: true,
-  }),
-)
-
-app.use(express.json())
+app.use(cors(corsOptions));
+app.use(express.json());
 
 const apiKeyAuth = async (req, res, next) => {
   const apiKey = req.header("X-API-Key")
@@ -376,3 +371,10 @@ app.get("/api/locations", async (req, res) => {
 
 module.exports = app
 
+
+if (process.env.NODE_ENV !== 'production') {
+  const port = process.env.PORT || 3001;
+  app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+  });
+}

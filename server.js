@@ -8,7 +8,20 @@ const port = process.env.PORT || 3001
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY)
 
-app.use(cors())
+// Update CORS configuration to allow requests from your frontend domain
+app.use(
+  cors({
+    origin: [
+      "https://brusliste.vercel.app",
+      "https://brusliste-git-test-your-username.vercel.app",
+      "http://localhost:3000",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "X-API-Key", "X-Location-Id"],
+    credentials: true,
+  }),
+)
+
 app.use(express.json())
 
 const apiKeyAuth = async (req, res, next) => {
@@ -363,9 +376,3 @@ app.get("/api/locations", async (req, res) => {
 
 module.exports = app
 
-if (process.env.NODE_ENV !== 'production') {
-  const port = process.env.PORT || 3001;
-  app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
-  });
-}

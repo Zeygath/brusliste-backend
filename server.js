@@ -272,6 +272,64 @@ app.delete("/api/people/:id", async (req, res) => {
   }
 })
 
+app.post("/api/people/:id/pay", async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Get the person's details
+    const { data: person, error: personError } = await supabase
+      .from("people")
+      .select("*")
+      .eq("id", id)
+      .eq("location_id", req.locationId)
+      .single();
+    
+    if (personError) throw personError;
+    
+    if (!person) {
+      return res.status(404).json({ error: "Person not found" });
+    }
+
+    // Only process payment if they have beverages to pay for
+    if (person.beverages > 0) {
+      // Create a payment transaction
+      const { error: transactionError } = await supabase
+        .from("transactions")
+        .insert({
+          person_id: person.id,
+          beverages: person.beverages,
+          amount: person.beverages * 10,
+          type: "payment",
+          beverage_type: person.beverage_type,
+          location_id: req.locationId,
+        });
+      
+      if (transactionError) throw transactionError;
+      
+      // Reset the person's beverage count
+      const { error: updateError } = await supabase
+        .from("people")
+        .update({ beverages: 0 })
+        .eq("id", id)
+        .eq("location_id", req.locationId);
+      
+      if (updateError) throw updateError;
+    }
+    
+    // Return the updated list of people
+    const { data: updatedPeople, error: peopleError } = await supabase
+      .from("people")
+      .select("*")
+      .eq("location_id", req.locationId)
+      .order("name");
+    
+    if (peopleError) throw peopleError;
+    res.json(updatedPeople);
+  } catch (error) {
+    console.error("Error processing payment:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
 app.get("/api/statistics", async (req, res) => {
   try {
     // Current month leaderboard

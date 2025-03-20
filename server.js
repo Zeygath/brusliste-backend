@@ -329,7 +329,31 @@ app.post("/api/people/:id/pay", async (req, res) => {
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
-
+app.get("/api/transactions", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select(`
+        *,
+        people (name)
+      `)
+      .eq("location_id", req.locationId)
+      .order("date", { ascending: false });
+    
+    if (error) throw error;
+    
+    // Transform the data to include the person's name directly
+    const transformedData = data.map(transaction => ({
+      ...transaction,
+      name: transaction.people?.name || null
+    }));
+    
+    res.json(transformedData);
+  } catch (error) {
+    console.error("Error fetching transactions:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
 app.get("/api/statistics", async (req, res) => {
   try {
     // Current month leaderboard

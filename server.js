@@ -47,8 +47,56 @@ app.use("/api", (req, res, next) => {
   next()
 })
 
+// Helper function to update inventory
+const updateInventory = async (beverageType, quantity, locationId) => {
+  try {
+    // First check if the inventory item exists
+    const { data: existingItem, error: checkError } = await supabase
+      .from("inventory")
+      .select("*")
+      .eq("beverage_type", beverageType)
+      .single()
+
+    if (checkError && checkError.code !== "PGRST116") {
+      throw checkError
+    }
+
+    if (existingItem) {
+      // Update existing inventory item
+      const { data, error } = await supabase
+        .from("inventory")
+        .update({
+          quantity: existingItem.quantity + quantity,
+          location_id: locationId,
+        })
+        .eq("id", existingItem.id)
+        .select()
+
+      if (error) throw error
+      return data[0]
+    } else {
+      // Insert new inventory item
+      const { data, error } = await supabase
+        .from("inventory")
+        .insert({
+          beverage_type: beverageType,
+          quantity: quantity,
+          location_id: locationId,
+        })
+        .select()
+
+      if (error) throw error
+      return data[0]
+    }
+  } catch (error) {
+    console.error("Error updating inventory:", error)
+    throw error
+  }
+}
+
 // Existing endpoints...
 
+// New endpoint for inventory management
 app.get("/api/inventory", async (req, res) => {
   try {
     const { data, error } = await supabase.from("inventory").select("*").eq("location_id", req.locationId)
@@ -64,45 +112,7 @@ app.get("/api/inventory", async (req, res) => {
 app.post("/api/inventory/update", async (req, res) => {
   const { beverageType, quantity } = req.body
   try {
-    // First check if the inventory item exists
-    const { data: existingItem, error: checkError } = await supabase
-      .from("inventory")
-      .select("*")
-      .eq("beverage_type", beverageType)
-      .eq("location_id", req.locationId)
-      .single()
-
-    if (checkError && checkError.code !== "PGRST116") {
-      throw checkError
-    }
-
-    let result
-    if (existingItem) {
-      // Update existing inventory item
-      const { data, error } = await supabase
-        .from("inventory")
-        .update({ quantity })
-        .eq("beverage_type", beverageType)
-        .eq("location_id", req.locationId)
-        .select()
-
-      if (error) throw error
-      result = data[0]
-    } else {
-      // Insert new inventory item
-      const { data, error } = await supabase
-        .from("inventory")
-        .insert({
-          beverage_type: beverageType,
-          quantity,
-          location_id: req.locationId,
-        })
-        .select()
-
-      if (error) throw error
-      result = data[0]
-    }
-
+    const result = await updateInventory(beverageType, quantity, req.locationId)
     res.json(result)
   } catch (error) {
     console.error("Error updating inventory:", error)
@@ -180,36 +190,8 @@ app.post("/api/people", async (req, res) => {
 
       if (transactionError) throw transactionError
 
-      // Update inventory - check if it exists first
-      const { data: inventoryData, error: inventoryError } = await supabase
-        .from("inventory")
-        .select("quantity")
-        .eq("beverage_type", beverageType)
-        .eq("location_id", req.locationId)
-        .single()
-
-      if (inventoryError && inventoryError.code !== "PGRST116") throw inventoryError
-
-      if (inventoryData) {
-        // Update existing inventory
-        const newQuantity = inventoryData.quantity - beverages
-        const { error: updateError } = await supabase
-          .from("inventory")
-          .update({ quantity: newQuantity })
-          .eq("beverage_type", beverageType)
-          .eq("location_id", req.locationId)
-
-        if (updateError) throw updateError
-      } else {
-        // Create new inventory entry
-        const { error: insertError } = await supabase.from("inventory").insert({
-          beverage_type: beverageType,
-          quantity: -beverages, // Negative because we're consuming
-          location_id: req.locationId,
-        })
-
-        if (insertError) throw insertError
-      }
+      // Update inventory using the helper function
+      await updateInventory(beverageType, -beverages, req.locationId)
     }
 
     const { data: updatedPeople, error: peopleError } = await supabase
@@ -245,36 +227,8 @@ app.post("/api/quickbuy", async (req, res) => {
 
     if (transactionError) throw transactionError
 
-    // Update inventory - check if it exists first
-    const { data: inventoryData, error: inventoryError } = await supabase
-      .from("inventory")
-      .select("quantity")
-      .eq("beverage_type", beverageType)
-      .eq("location_id", req.locationId)
-      .single()
-
-    if (inventoryError && inventoryError.code !== "PGRST116") throw inventoryError
-
-    if (inventoryData) {
-      // Update existing inventory
-      const newQuantity = inventoryData.quantity - 1
-      const { error: updateError } = await supabase
-        .from("inventory")
-        .update({ quantity: newQuantity })
-        .eq("beverage_type", beverageType)
-        .eq("location_id", req.locationId)
-
-      if (updateError) throw updateError
-    } else {
-      // Create new inventory entry
-      const { error: insertError } = await supabase.from("inventory").insert({
-        beverage_type: beverageType,
-        quantity: -1, // Negative because we're consuming
-        location_id: req.locationId,
-      })
-
-      if (insertError) throw insertError
-    }
+    // Update inventory using the helper function
+    await updateInventory(beverageType, -1, req.locationId)
 
     res.json(transaction)
   } catch (error) {

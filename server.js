@@ -3,8 +3,6 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const cors = require('cors');
 const app = express();
-require("dotenv").config()
-
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -40,6 +38,7 @@ const apiKeyAuth = async (req, res, next) => {
 }
 
 app.use("/api", apiKeyAuth)
+
 // Add this near the top of your file, after creating the supabase client
 app.use("/api", (req, res, next) => {
   // Get location_id from query parameter, header, or default to 1 (Office 1)
@@ -50,7 +49,6 @@ app.use("/api", (req, res, next) => {
 
 // Existing endpoints...
 
-// New endpoint for inventory management
 app.get("/api/inventory", async (req, res) => {
   try {
     const { data, error } = await supabase.from("inventory").select("*").eq("location_id", req.locationId)
@@ -401,10 +399,6 @@ app.get("/api/locations", async (req, res) => {
     console.error("Error fetching locations:", error)
     res.status(500).json({ error: "Internal server error" })
   }
-})
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`)
 })
 
 module.exports = app

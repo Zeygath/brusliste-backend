@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const cors = require('cors');
 const app = express();
+require("dotenv").config()
 
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -39,7 +40,6 @@ const apiKeyAuth = async (req, res, next) => {
 }
 
 app.use("/api", apiKeyAuth)
-
 // Add this near the top of your file, after creating the supabase client
 app.use("/api", (req, res, next) => {
   // Get location_id from query parameter, header, or default to 1 (Office 1)
@@ -66,25 +66,49 @@ app.get("/api/inventory", async (req, res) => {
 app.post("/api/inventory/update", async (req, res) => {
   const { beverageType, quantity } = req.body
   try {
-    const { data, error } = await supabase
+    // First check if the inventory item exists
+    const { data: existingItem, error: checkError } = await supabase
       .from("inventory")
-      .upsert(
-        {
+      .select("*")
+      .eq("beverage_type", beverageType)
+      .eq("location_id", req.locationId)
+      .single()
+
+    if (checkError && checkError.code !== "PGRST116") {
+      throw checkError
+    }
+
+    let result
+    if (existingItem) {
+      // Update existing inventory item
+      const { data, error } = await supabase
+        .from("inventory")
+        .update({ quantity })
+        .eq("beverage_type", beverageType)
+        .eq("location_id", req.locationId)
+        .select()
+
+      if (error) throw error
+      result = data[0]
+    } else {
+      // Insert new inventory item
+      const { data, error } = await supabase
+        .from("inventory")
+        .insert({
           beverage_type: beverageType,
           quantity,
           location_id: req.locationId,
-        },
-        {
-          onConflict: "beverage_type,location_id",
-        },
-      )
-      .select()
+        })
+        .select()
 
-    if (error) throw error
-    res.json(data[0])
+      if (error) throw error
+      result = data[0]
+    }
+
+    res.json(result)
   } catch (error) {
     console.error("Error updating inventory:", error)
-    res.status(500).json({ error: "Internal server error" })
+    res.status(500).json({ error: "Internal server error", details: error.message })
   }
 })
 
@@ -158,7 +182,7 @@ app.post("/api/people", async (req, res) => {
 
       if (transactionError) throw transactionError
 
-      // Update inventory
+      // Update inventory - check if it exists first
       const { data: inventoryData, error: inventoryError } = await supabase
         .from("inventory")
         .select("quantity")
@@ -168,21 +192,26 @@ app.post("/api/people", async (req, res) => {
 
       if (inventoryError && inventoryError.code !== "PGRST116") throw inventoryError
 
-      const currentQuantity = inventoryData ? inventoryData.quantity : 0
-      const newQuantity = currentQuantity - beverages
+      if (inventoryData) {
+        // Update existing inventory
+        const newQuantity = inventoryData.quantity - beverages
+        const { error: updateError } = await supabase
+          .from("inventory")
+          .update({ quantity: newQuantity })
+          .eq("beverage_type", beverageType)
+          .eq("location_id", req.locationId)
 
-      const { error: updateInventoryError } = await supabase.from("inventory").upsert(
-        {
+        if (updateError) throw updateError
+      } else {
+        // Create new inventory entry
+        const { error: insertError } = await supabase.from("inventory").insert({
           beverage_type: beverageType,
-          quantity: newQuantity,
+          quantity: -beverages, // Negative because we're consuming
           location_id: req.locationId,
-        },
-        {
-          onConflict: "beverage_type,location_id",
-        },
-      )
+        })
 
-      if (updateInventoryError) throw updateInventoryError
+        if (insertError) throw insertError
+      }
     }
 
     const { data: updatedPeople, error: peopleError } = await supabase
@@ -218,7 +247,7 @@ app.post("/api/quickbuy", async (req, res) => {
 
     if (transactionError) throw transactionError
 
-    // Update inventory
+    // Update inventory - check if it exists first
     const { data: inventoryData, error: inventoryError } = await supabase
       .from("inventory")
       .select("quantity")
@@ -228,26 +257,31 @@ app.post("/api/quickbuy", async (req, res) => {
 
     if (inventoryError && inventoryError.code !== "PGRST116") throw inventoryError
 
-    const currentQuantity = inventoryData ? inventoryData.quantity : 0
-    const newQuantity = currentQuantity - 1
+    if (inventoryData) {
+      // Update existing inventory
+      const newQuantity = inventoryData.quantity - 1
+      const { error: updateError } = await supabase
+        .from("inventory")
+        .update({ quantity: newQuantity })
+        .eq("beverage_type", beverageType)
+        .eq("location_id", req.locationId)
 
-    const { error: updateInventoryError } = await supabase.from("inventory").upsert(
-      {
+      if (updateError) throw updateError
+    } else {
+      // Create new inventory entry
+      const { error: insertError } = await supabase.from("inventory").insert({
         beverage_type: beverageType,
-        quantity: newQuantity,
+        quantity: -1, // Negative because we're consuming
         location_id: req.locationId,
-      },
-      {
-        onConflict: "beverage_type,location_id",
-      },
-    )
+      })
 
-    if (updateInventoryError) throw updateInventoryError
+      if (insertError) throw insertError
+    }
 
     res.json(transaction)
   } catch (error) {
     console.error("Error processing quick buy:", error)
-    res.status(500).json({ error: "Internal server error" })
+    res.status(500).json({ error: "Internal server error", details: error.message })
   }
 })
 
@@ -367,6 +401,10 @@ app.get("/api/locations", async (req, res) => {
     console.error("Error fetching locations:", error)
     res.status(500).json({ error: "Internal server error" })
   }
+})
+
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`)
 })
 
 module.exports = app

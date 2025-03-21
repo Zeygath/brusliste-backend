@@ -357,72 +357,62 @@ app.get("/api/transactions", async (req, res) => {
 app.get("/api/statistics", async (req, res) => {
   try {
     // Current month leaderboard
-    const currentMonth = new Date().toISOString().slice(0, 7) // YYYY-MM
     const { data: currentMonthLeaderboard, error: currentMonthError } = await supabase
-      .from("transactions")
-      .select("person_id, people(name), sum(beverages)")
-      .eq("type", "purchase")
+      .from("current_month_leaderboard")
+      .select("person_id, name, total_beverages")
       .eq("location_id", req.locationId)
-      .gte("date", `${currentMonth}-01`)
-      .group("person_id, people(name)")
-      .order("sum", { ascending: false })
-      .limit(5)
+      .limit(5);
 
     if (currentMonthError) throw currentMonthError
 
     // All-time leaderboard
     const { data: allTimeLeaderboard, error: allTimeError } = await supabase
-      .from("transactions")
-      .select("person_id, people(name), sum(beverages)")
-      .eq("type", "purchase")
+      .from("all_time_leaderboard")
+      .select("person_id, name, total_beverages")
       .eq("location_id", req.locationId)
-      .group("person_id, people(name)")
-      .order("sum", { ascending: false })
-      .limit(5)
+      .limit(5);
 
-    if (allTimeError) throw allTimeError
+    if (allTimeError) throw allTimeError;
 
-    // Beverage type distribution
+    // Beverage type distribution remains unchanged (note: make sure the .group() call is supported or refactor as needed)
     const { data: beverageTypeDistribution, error: distributionError } = await supabase
-      .from("transactions")
-      .select("beverage_type, count(*)")
+      .from("beverage_type_distribution_view")
+      .select("beverage_type, count")
       .eq("location_id", req.locationId)
-      .group("beverage_type")
-      .order("count", { ascending: false })
+      .order("count", { ascending: false });
 
-    if (distributionError) throw distributionError
+    if (distributionError) throw distributionError;
 
     // Calculate total transactions for percentage
     const { count: totalTransactions, error: countError } = await supabase
       .from("transactions")
       .select("*", { count: "exact", head: true })
-      .eq("location_id", req.locationId)
+      .eq("location_id", req.locationId);
 
-    if (countError) throw countError
+    if (countError) throw countError;
 
-    // Calculate percentages
     const distributionWithPercentage = beverageTypeDistribution.map((item) => ({
       beverage_type: item.beverage_type,
       count: item.count,
       percentage: ((item.count * 100.0) / totalTransactions).toFixed(2),
-    }))
+    }));
 
     res.json({
       currentMonthLeaderboard: currentMonthLeaderboard.map((item) => ({
-        name: item.people.name,
-        total_beverages: item.sum,
+        name: item.name,
+        total_beverages: item.total_beverages,
       })),
       allTimeLeaderboard: allTimeLeaderboard.map((item) => ({
-        name: item.people.name,
-        total_beverages: item.sum,
+        name: item.name,
+        total_beverages: item.total_beverages,
       })),
       beverageTypeDistribution: distributionWithPercentage,
-    })
+    });
   } catch (error) {
-    console.error("Error fetching statistics:", error)
-    res.status(500).json({ error: "Internal server error", details: error.message })
+    console.error("Error fetching statistics:", error);
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
-})
+});
 
 // Add a new endpoint to get available locations
 app.get("/api/locations", async (req, res) => {
